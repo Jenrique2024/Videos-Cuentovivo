@@ -1,0 +1,73 @@
+name: Renderizar Episodio Infantil (3 min MP4)
+
+on:
+  workflow_dispatch:
+    inputs:
+      episode_file:
+        description: "Ruta del JSON del episodio en el repositorio"
+        required: true
+        default: "episodes/episodio-01.json"
+      aspect_ratio:
+        description: "Formato de vídeo"
+        required: true
+        type: choice
+        options:
+          - "16:9"
+          - "9:16"
+        default: "16:9"
+      engine:
+        description: "Motor de voces"
+        required: true
+        type: choice
+        options:
+          - "free-edge-ffmpeg"
+          - "gemini-tts"
+        default: "free-edge-ffmpeg"
+  push:
+    paths:
+      - "episodes/*.json"
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Configurar Python para voces gratuitas (edge-tts)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar FFmpeg y edge-tts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          pip install --no-cache-dir edge-tts
+
+      - name: Instalar dependencias de Node (si usa Gemini TTS)
+        if: ${{ inputs.engine == 'gemini-tts' }}
+        run: npm ci
+
+      - name: Renderizar episodio completo de 3 minutos (.mp4 + .srt)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          node scripts/render-episode.mjs \
+            --input "${{ inputs.episode_file || 'episodes/episodio-01.json' }}" \
+            --aspect "${{ inputs.aspect_ratio || '16:9' }}" \
+            --engine "${{ inputs.engine || 'free-edge-ffmpeg' }}" \
+            --output "output"
+
+      - name: Subir MP4 y subtítulos para descargar
+        uses: actions/upload-artifact@v4
+        with:
+          name: episodio-renderizado
+          path: |
+            output/*.mp4
+            output/*.srt
